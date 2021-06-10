@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-  
 import requests
 from requests import HTTPError
 from parsel import Selector
