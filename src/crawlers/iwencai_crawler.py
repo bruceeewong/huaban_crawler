@@ -16,15 +16,22 @@ class DataType(Enum):
     DATE = 2
     AVG = 3
 
+
 class IWenCaiCrawler:
     RE_DATE =  r'(.*)\[(\d{8})\]'
     RE_AVG =  r'(.*)\[(\d{8}-\d{8})\]'
 
+    def __init__(self):
+        self.raw_data = {}
+        self.normalized_data = []
+        self.display_data = []
+
     def run(self):
         # answer = self.fetch_iwencai_data()
         json_data = self.read_iwencai_data()
-        data = self.assemble_data(json_data)
-        # print(data)
+        self.assemble_data(json_data)
+        File.save_file('iwencai_processed_data.json', json.dumps(self.display_data, ensure_ascii=False), rel_path='data')
+        
 
     def fetch_iwencai_data(self):
         """
@@ -79,16 +86,16 @@ class IWenCaiCrawler:
         return json_data
 
     def assemble_data(self, answer):
-        table_data =  IWenCaiCrawler.get_table_data(answer)
-        datas = table_data.get('datas')
-        result = []
+        self.raw_data =  IWenCaiCrawler.get_table_data(answer)
+        datas = self.raw_data.get('datas')
         for data in datas:
-            item = self.process_iwencai_data(data)
-            print(item)
-            result.append(item)
-        return result
+            normalized_one_data = self.normalize_data(data)
+            self.normalized_data.append(normalized_one_data)
+            self.display_data.append(IWenCaiCrawler.process_display_data(normalized_one_data))
+        return
 
-    def read_iwencai_data(self):
+    @staticmethod
+    def read_iwencai_data():
         return File.read_file('iwencai_answers.json',  rel_path='data', type='json')
 
     @staticmethod
@@ -110,6 +117,9 @@ class IWenCaiCrawler:
 
     @staticmethod
     def process_key_value(key, value):
+        """
+        将i问财的key,value处理成结构化数据
+        """
         # 如果形如　\w+[yyyymmdd]　的，解析出　{label date value}
         # 否则返回　｛ label value}
         data_type = IWenCaiCrawler.check_data_type(key)
@@ -120,10 +130,10 @@ class IWenCaiCrawler:
             return {
                 'label': label,
                 'type': data_type,
-                'data': {
+                'value': value,
+                'metadata': {
                     'date': date,
-                    'value': value,
-                }
+                },
             }
         elif (data_type == DataType.AVG):
             result = re.match(IWenCaiCrawler.RE_AVG, key)
@@ -132,25 +142,63 @@ class IWenCaiCrawler:
             return {
                 'label': label,
                 'type': data_type,
-                'data': {
+                'value': value,
+                'metadata': {
                     'date_range': date_range,
-                    'value': value,
-                }
+                },
             }
         else:
             return {
                 'label': key,
                 'type': data_type,
-                'data': {
-                    'value': value,
-                }
+                'value': value,
+                'metadata': None,
             }
 
     @staticmethod
-    def process_iwencai_data(data):
-        result = {}
-        for key in data:
-            value = data[key]
+    def normalize_data(dict_data):
+        result = []
+        for key in dict_data:
+            value = dict_data[key]
             item = IWenCaiCrawler.process_key_value(key, value)
-            result[item['label']] = item
+            result.append(item)
+        return result
+
+    @staticmethod
+    def process_display_data(normalized_data):
+        """
+        将i问财数据处理成要展示的数据结构
+        """
+        result = {}
+        for item in normalized_data:
+            new_label = item.get('label')
+            new_type = item.get('type').value
+            new_value = item.get('value')
+            new_metadata = item.get('metadata')
+            
+            if new_type == DataType.DATE:
+                date = new_metadata.get('date')
+                if new_label not in result:
+                    result[new_label] = {
+                        'type': new_type,
+                        'value': {
+                            date: new_value
+                        }
+                    }
+                else:
+                    result[new_label]['value'].update({ date: new_value })
+            elif new_type == DataType.AVG:
+                date_range = new_metadata.get('date_range')
+                result[new_label] = {
+                    'type': new_type,
+                    'value': {
+                        date_range: new_value
+                    }
+                }
+            else:
+                result[new_label] = {
+                    'type': new_type,
+                    'value': new_value
+                }
+
         return result

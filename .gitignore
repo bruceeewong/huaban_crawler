@@ -3,3 +3,4 @@ debug/*
 data/*
 .vscode/
 .DS_Store
+**/__pycahce__/**
